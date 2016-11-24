@@ -1,0 +1,144 @@
+
+
+'use strict';
+
+
+try {
+    var env = require('./.env.js');
+    for (var key in env) {
+        if (!(key in process.env))
+            process.env[key] = env[key];
+    }
+} catch (ex) {
+    console.log('error loading .env.js');
+}
+
+var express = require('express'),
+    app = express(),
+    vcapServices = require('vcap_services'),
+    extend = require('util')._extend,
+    watson = require('watson-developer-cloud'),
+    youtube = require('./apis/youtube'),
+    conceptInsights = require('./apis/concept_insights');
+
+// Bootstrap application settings
+require('./config/express')(app);
+
+var authService = watson.authorization(extend({
+    username: '7cdada4f-866f-40fa-acc0-786ed9a66bb4', // speech to text username
+    password: '4BSjR6mVBbB8', // speech to text password
+    version: 'v1'
+}, vcapServices.getCredentials('speech_to_text')));
+
+var watson = require('watson-developer-cloud');
+var alchemy_language = watson.alchemy_language({
+  api_key: 'c2cdbe1c37759750a9bc40e23e27ab20bd46cb2c'
+})
+
+var parameters = {
+  text: '',
+  knowledgeGraph: 1
+};
+
+app.get('/', function(req, res) {
+    res.render('index');
+});
+
+app.get('/dashboard', function(req, res) {
+    res.render('dashboard');
+});
+
+app.get('/tos', function(req, res) {
+    res.render('tos');
+});
+
+app.get('/alchemy',function(req,res,next){
+    parameters.text=req.query.text;
+    console.log(parameters);
+    alchemy_language.concepts(parameters, function(err, response) {
+        if (err)
+            console.log('HERE error:', err);
+        else
+          console.log(response);
+            res.json(response);
+
+    });
+});
+
+app.get('/api/labelSearch', function(req, res, next) {
+    conceptInsights.labelSearch(req.query, function(err, result) {
+        if (err)
+            next(err);
+        else
+            res.json(result);
+    });
+});
+
+app.get('/api/conceptualSearch', function(req, res, next) {
+    conceptInsights.conceptualSearch(req.query, function(err, result) {
+        if (err)
+            next(err);
+        else
+            res.json(result);
+    });
+});
+
+app.get('/api/getRelationScoresParallel', function(req, res, next) {
+    conceptInsights.relationScoresParallel(req.query.requests, function(err, result) {
+        if (err)
+            next(err);
+        else
+            res.json(result);
+    });
+});
+
+app.get('/api/getRelationScores', function(req, res, next) {
+    conceptInsights.getRelationScores(req.query, function(err, results) {
+        if (err)
+            next(err);
+        else
+            res.json(results);
+    });
+});
+
+
+app.post('/api/extractConceptMentions', function(req, res, next) {
+    conceptInsights.extractConceptMentions(req.body, function(err, results) {
+      if (err)
+        next(err);
+      else
+        res.json(results);
+    });
+});
+
+app.get('/api/video', function(req, res, next) {
+    youtube.getVideoChunk(req.query, req, res, next);
+});
+
+app.get('/api/video_url', function(req, res, next) {
+    youtube.getInternalUrl(req.query, function(err, url) {
+        if (err)
+            next(err);
+        else
+            res.json(url);
+    });
+});
+
+// Get token using your credentials
+app.post('/api/token', function(req, res, next) {
+    authService.getToken({
+        url: 'https://stream.watsonplatform.net/speech-to-text/api'
+    }, function(err, token) {
+        if (err)
+            next(err);
+        else
+            res.send(token);
+    });
+});
+
+// error-handler application settings
+require('./config/error-handler')(app);
+
+var port = process.env.VCAP_APP_PORT || 3000;
+app.listen(port);
+console.log('listening at:', port);
